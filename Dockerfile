@@ -1,0 +1,52 @@
+# Stage 1: Builder
+FROM python:3.11-slim as builder
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy project files
+COPY pyproject.toml README.md ./
+COPY src/ ./src/
+COPY knowledge/ ./knowledge/
+COPY tests/ ./tests/
+
+# Install Python dependencies
+RUN pip install --no-cache-dir --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir -e .
+
+# Stage 2: Runtime
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install runtime dependencies only
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy installed packages from builder
+COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
+
+# Copy application code
+COPY --from=builder /app/src ./src
+COPY --from=builder /app/knowledge ./knowledge
+COPY --from=builder /app/pyproject.toml ./
+COPY --from=builder /app/README.md ./
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PATH="/usr/local/bin:$PATH"
+
+# Create non-root user
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+USER appuser
+
+# Default command
+CMD ["python", "-m", "reviewai.main"]

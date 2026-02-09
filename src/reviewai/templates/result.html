@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Video Analysis Result</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="result-page">
+        <!-- Header with back button -->
+        <div class="result-header">
+            <a href="/" class="back-btn">← Back to Home</a>
+            <h1>Video Analysis Results</h1>
+            <p class="topic-info" id="topicInfo"></p>
+        </div>
+
+        <!-- Split layout container -->
+        <div class="split-container">
+            <!-- Left side: Video -->
+            <div class="video-section">
+                <div class="section-title">📺 Video</div>
+                <div class="video-container">
+                    <iframe 
+                        id="videoPlayer"
+                        width="100%" 
+                        height="100%" 
+                        src="{{ embed_url }}" 
+                        frameborder="0" 
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                        allowfullscreen>
+                    </iframe>
+                </div>
+                <div class="video-info">
+                    <a href="{{ youtube_url }}" target="_blank" class="original-link">
+                        🔗 Watch on YouTube
+                    </a>
+                </div>
+            </div>
+
+            <!-- Right side: Explanation -->
+            <div class="explanation-section">
+                <div class="section-title">💡 Explanation</div>
+                <div class="explanation-content" id="explanationContent">
+                    <div class="loading">
+                        <div class="spinner"></div>
+                        <p>Loading explanation...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Get video_id from URL query parameters
+        function getVideoIdFromUrl() {
+            const params = new URLSearchParams(window.location.search);
+            return params.get('video_id');
+        }
+
+        // Load explanation from server
+        async function loadExplanation() {
+            const explanationContent = document.getElementById('explanationContent');
+            const topicInfo = document.getElementById('topicInfo');
+            const videoId = getVideoIdFromUrl();
+            
+            if (!videoId) {
+                explanationContent.innerHTML = '<div class="error-box"><p>❌ No video data found. Please go back and try again.</p></div>';
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/result?video_id=' + encodeURIComponent(videoId));
+                
+                if (!response.ok) {
+                    throw new Error('Failed to load result');
+                }
+                
+                const data = await response.json();
+                
+                // Display topic
+                if (data.topic && data.topic !== 'YouTube Video') {
+                    topicInfo.textContent = `Topic: ${data.topic}`;
+                }
+                
+                // Format and display explanation
+                const formattedExplanation = formatExplanation(data.explanation);
+                explanationContent.innerHTML = formattedExplanation;
+                
+            } catch (error) {
+                explanationContent.innerHTML = `
+                    <div class="error-box">
+                        <p>❌ Error loading explanation: ${error.message}</p>
+                        <p>Please try again or check the video URL.</p>
+                    </div>
+                `;
+            }
+        }
+
+        // Format explanation text for better readability
+        function formatExplanation(text) {
+            if (!text) return '<p>No explanation available</p>';
+            
+            let formatted = text;
+            
+            // Convert markdown-style formatting
+            formatted = formatted
+                .replace(/\n\n/g, '</p><p>')
+                .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                .replace(/^#+\s(.+)$/gm, '<h3>$1</h3>')
+                .replace(/^-\s(.+)$/gm, '<li>$1</li>');
+            
+            // Wrap in paragraph tags if not already
+            if (!formatted.startsWith('<')) {
+                formatted = `<p>${formatted}</p>`;
+            }
+            
+            // Fix list items
+            formatted = formatted.replace(/(<li>.*?<\/li>)/s, '<ul>$1</ul>');
+            formatted = formatted.replace(/<\/ul>\s*<ul>/g, '');
+            
+            return formatted;
+        }
+
+        // Call on page load
+        document.addEventListener('DOMContentLoaded', loadExplanation);
+    </script>
+</body>
+</html>

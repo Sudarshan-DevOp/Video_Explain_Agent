@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Video Analyzer</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <div class="entry-page">
+            <div class="header">
+                <h1>🎥 YouTube Video Analyzer</h1>
+                <p class="subtitle">Powered by CrewAI - Get detailed explanations of any YouTube video</p>
+            </div>
+
+            <div class="card">
+                <form id="urlForm" class="form-group">
+                    <div class="form-field">
+                        <label for="youtubeUrl">YouTube Video URL</label>
+                        <input 
+                            type="text" 
+                            id="youtubeUrl" 
+                            name="youtubeUrl" 
+                            placeholder="https://www.youtube.com/watch?v=..." 
+                            required
+                        >
+                        <small>Paste a YouTube video link (youtube.com/watch?v=... or youtu.be/...)</small>
+                    </div>
+
+                    <div class="form-field">
+                        <label for="topic">Video Topic (Optional)</label>
+                        <input 
+                            type="text" 
+                            id="topic" 
+                            name="topic" 
+                            placeholder="e.g., Machine Learning, Web Development..."
+                        >
+                        <small>Helps focus the explanation on specific aspects</small>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">
+                        <span class="btn-text">Analyze Video</span>
+                        <span class="loader" id="loader" style="display: none;"></span>
+                    </button>
+                </form>
+
+                <div id="errorMessage" class="error-message" style="display: none;"></div>
+            </div>
+
+            <div class="info-section">
+                <h3>How it works:</h3>
+                <ol>
+                    <li>Enter a YouTube video URL</li>
+                    <li>Optionally specify a topic to focus the analysis</li>
+                    <li>Click "Analyze Video"</li>
+                    <li>View the video and detailed explanation side-by-side</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const form = document.getElementById('urlForm');
+        const youtubeUrlInput = document.getElementById('youtubeUrl');
+        const topicInput = document.getElementById('topic');
+        const errorMessage = document.getElementById('errorMessage');
+        const loader = document.getElementById('loader');
+        const btnText = document.querySelector('.btn-text');
+
+        // Progress modal controls
+        const progressModal = document.createElement('div');
+        progressModal.id = 'progressModal';
+        progressModal.innerHTML = `
+            <div class="modal-overlay">
+                <div class="modal-card">
+                    <h3>Analyzing video...</h3>
+                    <div class="progress-wrapper">
+                        <div class="progress-bar" id="progressBar">
+                            <div class="progress-fill" id="progressFill"></div>
+                        </div>
+                        <div class="progress-meta">
+                            <span id="progressPercent">0%</span>
+                            <span id="timeRemaining">Estimating...</span>
+                        </div>
+                    </div>
+                    <p class="modal-small">You can continue browsing; this will close when analysis completes.</p>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(progressModal);
+
+        const progressFill = document.getElementById('progressFill');
+        const progressPercent = document.getElementById('progressPercent');
+        const timeRemaining = document.getElementById('timeRemaining');
+
+        let progressTimer = null;
+
+        function showProgressModal(estimatedSeconds = 60) {
+            document.getElementById('progressModal').style.display = 'block';
+            // Reset
+            progressFill.style.width = '0%';
+            progressPercent.textContent = '0%';
+            timeRemaining.textContent = `About ${estimatedSeconds}s remaining`;
+
+            let elapsed = 0;
+            const interval = 1000; // ms
+            progressTimer = setInterval(() => {
+                elapsed += interval / 1000;
+                // Simple simulation: progress approaches 98% over estimatedSeconds
+                const pct = Math.min(98, Math.round((elapsed / estimatedSeconds) * 100));
+                progressFill.style.width = pct + '%';
+                progressPercent.textContent = pct + '%';
+                const remaining = Math.max(0, Math.round(estimatedSeconds - elapsed));
+                timeRemaining.textContent = `About ${remaining}s remaining`;
+            }, interval);
+        }
+
+        function hideProgressModal() {
+            clearInterval(progressTimer);
+            progressTimer = null;
+            // fill to 100% then hide after short delay
+            progressFill.style.width = '100%';
+            progressPercent.textContent = '100%';
+            timeRemaining.textContent = 'Done';
+            setTimeout(() => {
+                document.getElementById('progressModal').style.display = 'none';
+            }, 600);
+        }
+
+        function errorProgressModal(msg) {
+            clearInterval(progressTimer);
+            progressTimer = null;
+            progressFill.style.width = '0%';
+            progressPercent.textContent = 'Error';
+            timeRemaining.textContent = msg || 'Failed';
+            setTimeout(() => {
+                document.getElementById('progressModal').style.display = 'none';
+            }, 1500);
+        }
+
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const youtubeUrl = youtubeUrlInput.value.trim();
+            const topic = topicInput.value.trim() || 'YouTube Video';
+
+            // Clear previous error
+            errorMessage.style.display = 'none';
+
+            // Show progress modal, estimate 45s by default
+            showProgressModal(45);
+            form.querySelector('button').disabled = true;
+
+            try {
+                const response = await fetch('/analyze', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        youtube_url: youtubeUrl,
+                        topic: topic
+                    })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error || 'An error occurred');
+                }
+
+                // When server responds, hide progress modal and navigate
+                hideProgressModal();
+                window.location.href = '/result?video_id=' + encodeURIComponent(data.video_id);
+
+            } catch (error) {
+                errorMessage.textContent = '❌ ' + error.message;
+                errorMessage.style.display = 'block';
+                form.querySelector('button').disabled = false;
+                errorProgressModal(error.message);
+            }
+        });
+
+        // Real-time validation for URL
+        youtubeUrlInput.addEventListener('change', () => {
+            const url = youtubeUrlInput.value.trim();
+            const youtubeRegex = /^(https?:\/\/)?(www\.)?(youtube|youtu|youtube-nocookie)\.(com|be)\//;
+            
+            if (url && !youtubeRegex.test(url)) {
+                errorMessage.textContent = '⚠️ Please enter a valid YouTube URL';
+                errorMessage.style.display = 'block';
+            } else {
+                errorMessage.style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html>
